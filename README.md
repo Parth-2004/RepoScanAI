@@ -1,14 +1,14 @@
-# RepoScanAI — AI GitHub Portfolio Auditor
+# RepoScanAI — GitHub Developer Profile Analyzer
 
-**RepoScanAI** evaluates GitHub repositories the way a technical recruiter or senior engineer does.
+**RepoScanAI** evaluates GitHub repositories and developer profiles the way a technical recruiter or senior engineer does.
 
-Instead of counting stars or commits, it measures engineering maturity, maintainability, and real-world readiness using structured heuristics and LLM reasoning.
+Instead of guessing, it computes structured engineering signals first and then uses AI to interpret them.
 
-It answers a practical question:
+It answers practical questions:
 
 > Would a company trust this developer in production?
 
-Live Demo: https://reposcanai.onrender.com/
+Live Demo: https://repo-scan-ai.onrender.com/
 
 ---
 
@@ -104,19 +104,23 @@ Use cases:
 
 ---
 
-### Mode 3 — Portfolio Readiness Mode (Recruiter Simulation)
-**Goal:** Would this developer pass screening?
+### Mode 3 — Profile Mode (GitHub Developer Analysis)
+**Goal:** Predict engineering maturity (Beginner → Senior) using measurable signals.
 
-Simulates recruiter behavior and produces:
-- hiring confidence score
-- risk flags
-- improvement suggestions
-- role suitability (intern / junior / mid)
+Computes:
+- years active
+- recent activity consistency
+- dominant stack specialization
+- serious project count
+- impact score (stars + forks)
+- domain signals (backend, frontend, ai/ml, devops, data)
 
-Use cases:
-- resume preparation
-- placement training
-- career feedback
+Outputs:
+- candidate level
+- primary stack
+- consistency rating
+- engineering maturity score
+- strengths, weaknesses, recommended roles
 
 ---
 
@@ -124,6 +128,9 @@ Use cases:
 
 - AI-generated technical report
 - Professional grade scorecard
+- Repository comparison
+- Developer profile evaluation
+- Structured metrics + AI interpretation
 - Architecture visualizer
 - Security surface detection
 - PDF export
