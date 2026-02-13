@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>RepoScanAI – GitHub Repo Security & AI Inspector</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4f46e5',
+                        accent: '#22c55e',
+                        danger: '#ef4444'
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        /* Smooth animations & custom tweaks */
+        .fade-in {
+            animation: fade-in 0.4s ease-out;
+        }
+
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .spinner {
+            border-top-color: #4f46e5;
+            border-radius: 9999px;
+            border-width: 4px;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Simple horizontal risk bar */
+        .risk-bar {
+            position: relative;
+            height: 10px;
+            border-radius: 9999px;
+            overflow: hidden;
+            background: linear-gradient(90deg, #22c55e, #eab308, #ef4444);
+        }
+
+        .risk-indicator {
+            position: absolute;
+            top: -4px;
+            width: 2px;
+            height: 18px;
+            background: #e5e7eb;
+        }
+
+        /* Markdown Styles */
+        #ai-summary ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        #ai-summary ol {
+            list-style-type: decimal;
+            padding-left: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        #ai-summary strong {
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+
+        #ai-summary p {
+            margin-bottom: 0.75rem;
+        }
+
+        #ai-summary h1,
+        #ai-summary h2,
+        #ai-summary h3 {
+            font-weight: 600;
+            color: #f8fafc;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Simple scroll for tree */
+        #file-tree {
+            max-height: 260px;
+            overflow-y: auto;
+        }
+
+        /* Basic printable layout for PDF export */
+        @media print {
+            body {
+                background: #ffffff;
+                color: #000000;
+            }
+
+            #controls,
+            #badge-section {
+                display: none !important;
+            }
+
+            .card {
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+    <!-- Top bar -->
+    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-20">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <span
+                    class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary/20 text-primary font-bold">R</span>
+                <div>
+                    <h1 class="text-lg font-semibold tracking-tight">RepoScanAI</h1>
+                    <p class="text-xs text-slate-400">Instant GitHub repo insights, security, and AI analysis</p>
+                </div>
+            </div>
+            <div id="badge-section" class="flex items-center gap-2">
+                <span
+                    class="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                    ⚡ Professional Grade Audit
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main -->
+    <main class="flex-1">
+        <div class="max-w-6xl mx-auto px-4 py-6 lg:py-8">
+            <!-- Input + controls -->
+            <section id="controls" class="mb-6 lg:mb-8">
+                <div class="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                    <div
+                        class="card bg-slate-900/60 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50 fade-in">
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Scan a GitHub
+                                Repository</h2>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-slate-800 text-slate-300">Client-side ·
+                                No backend</span>
+                        </div>
+                        <div class="mb-3">
+                            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-2">Mode</div>
+                            <div class="inline-flex flex-wrap gap-2">
+                                <button type="button" data-mode="repo"
+                                    class="mode-btn px-3 py-1 rounded-full text-[11px] font-semibold border border-slate-700 bg-slate-900 text-slate-200">
+                                    Repository Mode
+                                </button>
+                                <button type="button" data-mode="compare"
+                                    class="mode-btn px-3 py-1 rounded-full text-[11px] font-semibold border border-slate-700 bg-slate-900 text-slate-200">
+                                    Compare Mode
+                                </button>
+                                <button type="button" data-mode="profile"
+                                    class="mode-btn px-3 py-1 rounded-full text-[11px] font-semibold border border-slate-700 bg-slate-900 text-slate-200">
+                                    Profile Mode
+                                </button>
+                            </div>
+                        </div>
+                        <label id="repo-input-label" class="block text-xs font-medium text-slate-400 mb-1"
+                            for="repo-url">
+                            Public GitHub repo URL
+                        </label>
+                        <div id="compare-inputs" class="hidden space-y-2 mt-3 border-t border-slate-800 pt-3">
+                            <input id="repo-url-2" type="url" placeholder="https://github.com/user/repo2"
+                                class="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" />
+
+                            <select id="compare-mode"
+                                class="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-xs text-slate-100">
+                                <option value="recruiter">Recruiter Mode</option>
+                                <option value="technical">Technical Mode</option>
+                                <option value="security">Security Mode</option>
+                            </select>
+                        </div>
+
+                        <div class="flex flex-col gap-3">
+                            <input id="repo-url" type="url" placeholder="https://github.com/user/repo"
+                                class="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" />
+                            <div class="flex flex-wrap gap-2 items-center">
+                                <button id="scan-btn"
+                                    class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-primary/60 active:scale-[0.98] transition">
+                                    <span id="scan-btn-label">Audit Repository</span>
+                                    <span id="scan-spinner" class="hidden spinner border-4 border-slate-700"></span>
+                                </button>
+                                <button id="export-pdf-btn"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600/60">
+                                    ⬇️ Export PDF
+                                </button>
+                                <button id="copy-report-btn"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600/60">
+                                    📋 Copy Report
+                                </button>
+                            </div>
+                            <p id="status-msg" class="text-xs text-slate-400 min-h-[1rem]"></p>
+                        </div>
+                    </div>
+
+                    <!-- Demo repos -->
+                    <div id="demo-presets"
+                        class="card bg-slate-900/60 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50 fade-in">
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Demo Presets
+                            </h2>
+                            <span class="text-[10px] px-2 py-1 rounded-full bg-slate-800 text-slate-300">Try in one
+                                click</span>
+                        </div>
+                        <div class="space-y-2">
+                            <button data-url="https://github.com/digininja/DVWA"
+                                class="demo-btn w-full flex items-start justify-between gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left text-xs hover:bg-slate-800 transition">
+                                <div>
+                                    <div class="font-semibold text-slate-100">DVWA – Vulnerable App</div>
+                                    <div class="text-[11px] text-slate-400">
+                                        Older codebase, likely low maintenance score.
+                                    </div>
+                                </div>
+                                <span class="mt-1 text-[10px] text-danger font-semibold">Low Grade</span>
+                            </button>
+                            <button data-url="https://github.com/vercel/next-learn"
+                                class="demo-btn w-full flex items-start justify-between gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left text-xs hover:bg-slate-800 transition">
+                                <div>
+                                    <div class="font-semibold text-slate-100">Next.js Learn</div>
+                                    <div class="text-[11px] text-slate-400">
+                                        High quality, modern structure, professional docs.
+                                    </div>
+                                </div>
+                                <span class="mt-1 text-[10px] text-emerald-400 font-semibold">High Grade</span>
+                            </button>
+                            <button data-url="https://github.com/streamlit/streamlit-example"
+                                class="demo-btn w-full flex items-start justify-between gap-2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left text-xs hover:bg-slate-800 transition">
+                                <div>
+                                    <div class="font-semibold text-slate-100">Streamlit Example</div>
+                                    <div class="text-[11px] text-slate-400">
+                                        Clean Python data app example.
+                                    </div>
+                                </div>
+                                <span class="mt-1 text-[10px] text-sky-400 font-semibold">Mid Grade</span>
+                            </button>
+                        </div>
+                        <p class="mt-3 text-[11px] text-slate-500">
+                            Select a preset to see how the scoring system evaluates different types of repositories.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Analysis dashboard -->
+            <section id="dashboard" class="space-y-4 lg:space-y-5 fade-in">
+                <!-- Top summary + score -->
+                <div class="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)] repo-panel">
+                    <div
+                        class="card bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">AI Repo Summary
+                                </h2>
+                                <p class="text-xs text-slate-400">Plain-English description, tech stack & architecture
+                                </p>
+                            </div>
+                            <span id="repo-name-pill"
+                                class="text-[10px] px-2 py-1 rounded-full bg-slate-800 text-slate-300 max-w-[160px] truncate">
+                                No repository loaded
+                            </span>
+                        </div>
+                        <div id="ai-summary" class="text-sm text-slate-200 whitespace-pre-line">
+                            Paste a GitHub URL above and hit “Scan Repository” to generate an AI-powered overview of the
+                            project.
+                        </div>
+                    </div>
+                    <!-- Comparison Result -->
+                        <div id="compare-result"
+                            class="card hidden bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50 mt-4">
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                                Repository Comparison
+                            </h2>
+                                <div id="compare-output" class="text-sm text-slate-200 whitespace-pre-line">
+                                    Comparison results will appear here.
+                                </div>
+                            </div>
+                    <div
+                        class="card bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-3">Professional Grade
+                            & Scorecard</h2>
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <div class="text-xs text-slate-400">Total Score (0-100)</div>
+                                <div id="security-score" class="text-3xl font-semibold text-emerald-400">–</div>
+                            </div>
+                            <div class="text-right text-xs text-slate-400">
+                                <div id="risk-label" class="font-semibold text-slate-200">No data</div>
+                                <div class="text-[11px] text-slate-400">
+                                    Based on 4 weighted categories
+                                </div>
+                            </div>
+                        </div>
+                        <div class="risk-bar mb-2">
+                            <div id="risk-indicator" class="risk-indicator" style="left:0%;"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-500">
+                            <span>0 · D</span>
+                            <span>50 · C</span>
+                            <span>70 · B</span>
+                            <span>90 · A+</span>
+                        </div>
+                        <ul id="risk-heatmap" class="mt-3 text-xs text-slate-300 space-y-1">
+                            <li class="text-slate-500">Run audit to see category breakdown.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div id="profile-panel"
+                    class="card hidden bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                    <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-3">Profile Analysis
+                        Panel</h2>
+                    <div class="grid gap-3 lg:grid-cols-3 text-xs text-slate-200">
+                        <div>
+                            <div class="text-[11px] text-slate-500">Candidate Level</div>
+                            <div id="profile-candidate-level" class="font-semibold">–</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-500">Primary Stack</div>
+                            <div id="profile-stack" class="font-semibold">–</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-500">Consistency</div>
+                            <div id="profile-consistency" class="font-semibold">–</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-500">Engineering Maturity</div>
+                            <div id="profile-maturity" class="font-semibold">–</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid gap-4 lg:grid-cols-3 text-xs text-slate-200">
+                        <div>
+                            <div class="text-[11px] text-slate-500 mb-1">Recommended Roles</div>
+                            <div id="profile-roles" class="whitespace-pre-line text-slate-200">–</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-500 mb-1">Strengths</div>
+                            <div id="profile-strengths" class="whitespace-pre-line text-slate-200">–</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-500 mb-1">Weaknesses</div>
+                            <div id="profile-weaknesses" class="whitespace-pre-line text-slate-200">–</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Middle: metadata + file tree + languages -->
+                <div class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)] repo-panel">
+                    <div
+                        class="card bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-3">Repository
+                            Metadata</h2>
+                        <dl id="repo-meta" class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-300">
+                            <div>
+                                <dt class="text-slate-500">Owner</dt>
+                                <dd id="meta-owner" class="font-medium text-slate-200">–</dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">Stars</dt>
+                                <dd id="meta-stars" class="font-medium text-slate-200">–</dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">Last updated</dt>
+                                <dd id="meta-updated" class="font-medium text-slate-200">–</dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">Default branch</dt>
+                                <dd id="meta-branch" class="font-medium text-slate-200">–</dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">Open issues</dt>
+                                <dd id="meta-issues" class="font-medium text-slate-200">–</dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">License</dt>
+                                <dd id="meta-license" class="font-medium text-slate-200">–</dd>
+                            </div>
+                        </dl>
+                        <div class="mt-4">
+                            <h3 class="text-xs font-semibold text-slate-400 mb-2">Languages breakdown</h3>
+                            <div id="languages" class="space-y-1 text-xs text-slate-300">
+                                <div class="text-slate-500">No data yet.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        class="card bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Code Structure
+                                    & File Tree</h2>
+                                <p class="text-xs text-slate-400">Interactive architecture view</p>
+                            </div>
+                        </div>
+                        <div id="file-tree"
+                            class="text-xs text-slate-200 bg-slate-950/40 border border-slate-800 rounded-lg p-3">
+                            <div class="text-slate-500">Key folders and files will appear here after a scan.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom: vulnerabilities + AI fixes -->
+                <div class="grid gap-4 lg:grid-cols-2 repo-panel">
+                    <div
+                        class="card bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-3">Missing Critical
+                            Files</h2>
+                        <div id="vuln-list" class="text-xs text-slate-200 space-y-2">
+                            <p class="text-slate-500">
+                                Checks for essential professional files like README, LICENSE, and .gitignore.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div
+                        class="card bg-slate-900/70 border border-slate-800 rounded-xl p-4 lg:p-5 shadow-lg shadow-slate-950/50">
+                        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400 mb-3">Recruiter Feedback
+                        </h2>
+                        <div id="ai-fixes" class="text-xs text-slate-200 space-y-2">
+                            <p class="text-slate-500">
+                                AI-generated "Hire/Pass" verdict and strengths/weaknesses analysis based on the
+                                calculated professional grade.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950/90">
+        <div
+            class="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span>RepoScanAI · Professional GitHub Audit</span>
+            <span>Deploy locally or on static hosting.</span>
+        </div>
+    </footer>
+
+    <!-- Main script -->
+    <script>
+        // ======= CONFIG =======
+        // API Key is handled by the backend server
+
+        const GITHUB_API_BASE = "https://api.github.com";
+
+        // ======= DOM elements =======
+        const repoInput = document.getElementById("repo-url");
+        const repoInputLabel = document.getElementById("repo-input-label");
+        const scanBtn = document.getElementById("scan-btn");
+        const scanBtnLabel = document.getElementById("scan-btn-label");
+        const scanSpinner = document.getElementById("scan-spinner");
+        const statusMsg = document.getElementById("status-msg");
+        const demoButtons = document.querySelectorAll(".demo-btn");
+        const demoPresets = document.getElementById("demo-presets");
+        const modeButtons = document.querySelectorAll(".mode-btn");
+        const compareInputs = document.getElementById("compare-inputs");
+        const repoInput2 = document.getElementById("repo-url-2");
+        const compareMode = document.getElementById("compare-mode");
+        const compareResult = document.getElementById("compare-result");
+        const compareOutput = document.getElementById("compare-output");
+        const repoNamePill = document.getElementById("repo-name-pill");
+        const aiSummaryEl = document.getElementById("ai-summary");
+        const aiFixesEl = document.getElementById("ai-fixes");
+        const repoMetaEls = {
+            owner: document.getElementById("meta-owner"),
+            stars: document.getElementById("meta-stars"),
+            updated: document.getElementById("meta-updated"),
+            branch: document.getElementById("meta-branch"),
+            issues: document.getElementById("meta-issues"),
+            license: document.getElementById("meta-license"),
+        };
+        const languagesEl = document.getElementById("languages");
+        const fileTreeEl = document.getElementById("file-tree");
+
+        // New elements for scoring
+        const securityScoreEl = document.getElementById("security-score"); // Will reuse ID but change label
+        const riskLabelEl = document.getElementById("risk-label");
+        const riskIndicatorEl = document.getElementById("risk-indicator");
+        const riskHeatmapEl = document.getElementById("risk-heatmap");
+        const vulnListEl = document.getElementById("vuln-list");
+
+        const profilePanel = document.getElementById("profile-panel");
+        const profileCandidateLevelEl = document.getElementById("profile-candidate-level");
+        const profileStackEl = document.getElementById("profile-stack");
+        const profileConsistencyEl = document.getElementById("profile-consistency");
+        const profileMaturityEl = document.getElementById("profile-maturity");
+        const profileRolesEl = document.getElementById("profile-roles");
+        const profileStrengthsEl = document.getElementById("profile-strengths");
+        const profileWeaknessesEl = document.getElementById("profile-weaknesses");
+        const repoPanels = document.querySelectorAll(".repo-panel");
+
+        const copyReportBtn = document.getElementById("copy-report-btn");
+        const exportPdfBtn = document.getElementById("export-pdf-btn");
+
+        let lastReportText = "";
+        let currentMode = "repo";
+
+        // ======= Utility helpers =======
+        function setStatus(message, type = "info") {
+            const time = new Date().toLocaleTimeString();
+            console.log(`[${time}] ${message}`);
+            statusMsg.textContent = message;
+            statusMsg.className = "text-xs min-h-[1rem] " +
+                (type === "error" ? "text-danger" : type === "success" ? "text-emerald-400" : "text-slate-400");
+        }
+
+        function toggleLoading(isLoading) {
+            if (isLoading) {
+                scanSpinner.classList.remove("hidden");
+                scanBtn.disabled = true;
+                scanBtn.classList.add("opacity-60");
+            } else {
+                scanSpinner.classList.add("hidden");
+                scanBtn.disabled = false;
+                scanBtn.classList.remove("opacity-60");
+            }
+        }
+
+        function parseGitHubUrl(url) {
+            try {
+                const u = new URL(url.trim());
+                if (u.hostname !== "github.com") return null;
+                const parts = u.pathname.split("/").filter(Boolean);
+                if (parts.length < 2) return null;
+                return { owner: parts[0], repo: parts[1] };
+            } catch {
+                return null;
+            }
+        }
+
+        function parseGitHubProfile(input) {
+            if (!input) return null;
+            const trimmed = input.trim();
+            if (!trimmed) return null;
+            try {
+                if (trimmed.includes("github.com")) {
+                    const u = new URL(trimmed);
+                    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return null;
+                    const parts = u.pathname.split("/").filter(Boolean);
+                    return parts[0] || null;
+                }
+            } catch { }
+            const isUsername = /^[a-zA-Z0-9-]+$/.test(trimmed);
+            return isUsername ? trimmed : null;
+        }
+
+        function parseProfileField(text, label) {
+            const regex = new RegExp(`${label}:\\s*([\\s\\S]*?)(\\n[A-Za-z\\s]+:|$)`, "i");
+            const match = text.match(regex);
+            if (!match) return "";
+            return match[1].trim();
+        }
+
+        function formatBulletList(text) {
+            if (!text) return "–";
+            const lines = text.split("\n")
+                .map(line => line.replace(/^[-•*]\s*/, "").trim())
+                .filter(Boolean)
+                .slice(0, 3);
+            if (!lines.length) return "–";
+            return lines.map(line => `• ${line}`).join("\n");
+        }
+
+        function renderProfileAnalysis(data) {
+            if (!data) return;
+            const metrics = data.metrics || {};
+            const analysisText = data.analysis || "";
+            const candidateLevel = parseProfileField(analysisText, "Candidate Level") || metrics.level || "–";
+            const strengths = formatBulletList(parseProfileField(analysisText, "Strengths"));
+            const weaknesses = formatBulletList(parseProfileField(analysisText, "Weaknesses"));
+            const roles = formatBulletList(parseProfileField(analysisText, "Recommended Roles"));
+            const maturity = metrics.level_score !== undefined ? `${metrics.level_score}/100` : "–";
+
+            profileCandidateLevelEl.textContent = candidateLevel;
+            profileStackEl.textContent = metrics.specialization || "–";
+            profileConsistencyEl.textContent = metrics.consistency || "–";
+            profileMaturityEl.textContent = maturity;
+            profileRolesEl.textContent = roles;
+            profileStrengthsEl.textContent = strengths;
+            profileWeaknessesEl.textContent = weaknesses;
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            modeButtons.forEach(btn => {
+                const isActive = btn.getAttribute("data-mode") === mode;
+                btn.classList.toggle("bg-primary/20", isActive);
+                btn.classList.toggle("border-primary/40", isActive);
+                btn.classList.toggle("text-primary", isActive);
+            });
+
+            const isProfile = mode === "profile";
+            const isCompare = mode === "compare";
+
+            compareInputs.classList.toggle("hidden", !isCompare);
+            demoPresets.classList.toggle("hidden", isProfile);
+            repoPanels.forEach(panel => panel.classList.toggle("hidden", isProfile));
+            profilePanel.classList.toggle("hidden", !isProfile);
+            compareResult.classList.add("hidden");
+
+            if (isProfile) {
+                repoInput.placeholder = "https://github.com/username";
+                repoInputLabel.textContent = "GitHub username or profile URL";
+                scanBtnLabel.textContent = "Analyze Profile";
+            } else {
+                repoInput.placeholder = "https://github.com/user/repo";
+                repoInputLabel.textContent = "Public GitHub repo URL";
+                scanBtnLabel.textContent = isCompare ? "Compare Repositories" : "Audit Repository";
+            }
+        }
+
+        function niceDate(iso) {
+            if (!iso) return "–";
+            const d = new Date(iso);
+            return isNaN(d.getTime()) ? "–" : d.toLocaleDateString();
+        }
+
+        function percentage(num, total) {
+            if (!total || total === 0) return 0;
+            return Math.round((num / total) * 100);
+        }
+
+        function buildTreeFromContents(contents, maxEntries = 80) {
+            const tree = {};
+            contents.slice(0, maxEntries).forEach(item => {
+                const parts = item.path.split("/");
+                let current = tree;
+                parts.forEach((segment, idx) => {
+                    if (!current[segment]) current[segment] = { __children: {}, __type: (idx === parts.length - 1 ? item.type : "dir") };
+                    current = current[segment].__children;
+                });
+            });
+
+            function renderNode(node) {
+                const entries = Object.entries(node);
+                if (!entries.length) return "";
+                const sorted = entries.sort((a, b) => {
+                    const aDir = a[1].__type === "dir";
+                    const bDir = b[1].__type === "dir";
+                    if (aDir !== bDir) return aDir ? -1 : 1;
+                    return a[0].localeCompare(b[0]);
+                });
+                const items = sorted.map(([name, entry]) => {
+                    const icon = entry.__type === "dir" ? "📁" : "📄";
+                    const children = renderNode(entry.__children);
+                    return `
+                        <li class="space-y-1">
+                            <div class="flex items-center gap-2">
+                                <span>${icon}</span>
+                                <span class="truncate">${name}</span>
+                            </div>
+                            ${children ? `<ul class="ml-4 border-l border-slate-800 pl-3 space-y-1">${children}</ul>` : ""}
+                        </li>
+                    `;
+                });
+                return items.join("");
+            }
+
+            const html = renderNode(tree);
+            if (!html) return '<div class="text-slate-500">No files found.</div>';
+            return `<ul class="space-y-2">${html}</ul>`;
+        }
+
+        // ======= GitHub API calls =======
+        async function fetchRepoMeta(owner, repo) {
+            const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}`);
+            if (!res.ok) throw new Error(`Metadata error: ${res.status}`);
+            return await res.json();
+        }
+
+        async function fetchLanguages(owner, repo) {
+            try {
+                const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/languages`);
+                return res.ok ? await res.json() : {};
+            } catch { return {}; }
+        }
+
+        async function fetchContents(owner, repo) {
+            try {
+                const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contents?per_page=100`);
+                return res.ok ? await res.json() : [];
+            } catch { return []; }
+        }
+
+        async function fetchReadme(owner, repo) {
+            try {
+                const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/readme`);
+                if (!res.ok) return "";
+                const data = await res.json();
+                return data.content ? atob(data.content) : "";
+            } catch { return ""; }
+        }
+
+        async function fetchCommits(owner, repo) {
+            // Limited to latest 30 to avoid rate limits on unauth requests
+            try {
+                const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/commits?per_page=30`);
+                return res.ok ? await res.json() : [];
+            } catch { return []; }
+        }
+
+        async function fetchFileContent(owner, repo, path) {
+            try {
+                const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`);
+                if (!res.ok) return "";
+                const data = await res.json();
+                return data.content ? atob(data.content) : "";
+            } catch { return ""; }
+        }
+
+        // Optimized parallel fetch
+        async function fetchKeyFiles(owner, repo, contents) {
+            const candidates = ["README.md", "README", "main.py", "app.py", "manage.py",
+                "index.js", "main.js", "src/index.js", "src/main.jsx",
+                "package.json", "requirements.txt", "pyproject.toml"];
+
+            const matches = contents.filter(c =>
+                c.type === "file" && candidates.some(name => c.path.toLowerCase().endsWith(name.toLowerCase()))
+            );
+
+            const filePromises = matches.map(async c => {
+                const content = await fetchFileContent(owner, repo, c.path);
+                const matchedName = candidates.find(name => c.path.toLowerCase().endsWith(name.toLowerCase()));
+                return { name: matchedName || c.path, content };
+            });
+
+            const results = await Promise.all(filePromises);
+            const found = {};
+            results.forEach(r => { if (r.content) found[r.name] = r.content; });
+            return found;
+        }
+
+        // ======= Evaluation Logic =======
+        function calculateRepoScore(meta, languages, contents, commits, readme) {
+            let score = 0;
+            const details = {
+                structure: { score: 0, max: 25, items: [] },
+                activity: { score: 0, max: 20, items: [] },
+                depth: { score: 0, max: 25, items: [] },
+                professional: { score: 0, max: 15, items: [] },
+                redFlags: { points: 0, flags: [] }
+            };
+
+            // 1. Structure (25%)
+            const fileNames = contents.map(c => c.name.toLowerCase());
+            if (readme && readme.length > 100) { details.structure.score += 10; details.structure.items.push("Comprehensive README (+10)"); }
+            else if (readme) { details.structure.score += 5; details.structure.items.push("Basic README (+5)"); }
+
+            if (fileNames.some(n => n.includes("license"))) { details.structure.score += 5; details.structure.items.push("License (+5)"); }
+            if (fileNames.includes(".gitignore")) { details.structure.score += 5; details.structure.items.push(".gitignore (+5)"); }
+            if (fileNames.some(n => n.includes("contributing") || n.includes("code_of_conduct"))) { details.structure.score += 5; details.structure.items.push("Contribution Guidelines (+5)"); }
+
+            // 2. Activity / Consistency (20%)
+            if (commits.length > 0) {
+                const lastCommitDate = new Date(commits[0].commit.author.date);
+                const daysSinceLast = (new Date() - lastCommitDate) / (1000 * 60 * 60 * 24);
+
+                if (daysSinceLast < 30) { details.activity.score += 10; details.activity.items.push("Recent activity < 1mo (+10)"); }
+                else if (daysSinceLast < 90) { details.activity.score += 5; details.activity.items.push("Activity < 3mo (+5)"); }
+
+                if (commits.length >= 20) { details.activity.score += 10; details.activity.items.push("Significant commit history (+10)"); }
+                else if (commits.length >= 10) { details.activity.items.push("Moderate history (+5)"); }
+            } else {
+                details.activity.items.push("No commit history found");
+            }
+
+            // 3. Project Depth (25%)
+            const totalBytes = Object.values(languages).reduce((a, b) => a + b, 0);
+            if (totalBytes > 100000) { details.depth.score += 10; details.depth.items.push("Large codebase (>100KB) (+10)"); }
+            else if (totalBytes > 20000) { details.depth.score += 5; details.depth.items.push("Moderate codebase (+5)"); }
+
+            const langCount = Object.keys(languages).length;
+            if (langCount >= 2) { details.depth.score += 5; details.depth.items.push("Multi-language usage (+5)"); }
+
+            const fileCount = contents.length; // Approximate (root level only in this cheap scan)
+            // But let's check deep
+            if (fileCount > 5) { details.depth.score += 5; details.depth.items.push("Complex file structure (+5)"); }
+            // Tech specific bonuses could go here (e.g. finding Dockerfile)
+            if (fileNames.some(f => f.includes("docker") || f.includes("test"))) { details.depth.score += 5; details.depth.items.push("DevOps/Tests found (+5)"); }
+
+
+            // 4. Professional Signals (15%)
+            if (meta.description && meta.description.length > 10) { details.professional.score += 5; details.professional.items.push("Clear description (+5)"); }
+            if (meta.homepage) { details.professional.score += 5; details.professional.items.push("Homepage/Demo Link (+5)"); }
+            if (meta.topics && meta.topics.length > 0) { details.professional.score += 5; details.professional.items.push("Topic tags (+5)"); }
+
+            // 5. Red Flags (-15% Penalty)
+            if (commits.length > 0) {
+                const lastCommitDate = new Date(commits[0].commit.author.date);
+                const daysSinceLast = (new Date() - lastCommitDate) / (1000 * 60 * 60 * 24);
+                if (daysSinceLast > 180) { details.redFlags.points -= 15; details.redFlags.flags.push("Inactive > 6 months (-15)"); }
+            }
+            if (commits.length === 0) { details.redFlags.points -= 15; details.redFlags.flags.push("Empty/No Commits (-15)"); }
+            // "One-day dump": simplify to all commits on same day
+            if (commits.length > 5) {
+                const dates = commits.map(c => new Date(c.commit.author.date).toDateString());
+                const uniqueDays = new Set(dates);
+                if (uniqueDays.size === 1) { details.redFlags.points -= 10; details.redFlags.flags.push("Single-day commit dump (-10)"); }
+            }
+
+
+            // Total Score
+            let rawScore = details.structure.score + details.activity.score + details.depth.score + details.professional.score + details.redFlags.points;
+            rawScore = Math.max(0, Math.min(100, rawScore));
+
+            let grade = "C";
+            if (rawScore >= 90) grade = "A+";
+            else if (rawScore >= 80) grade = "A";
+            else if (rawScore >= 70) grade = "B";
+            else if (rawScore >= 50) grade = "C";
+            else grade = "D";
+
+            return {
+                total: rawScore,
+                grade: grade,
+                breakdown: details
+            };
+        }
+
+        function renderScoreboard(scoreData) {
+            if (!scoreData) {
+                securityScoreEl.textContent = "–";
+                riskLabelEl.textContent = "No data";
+                riskHeatmapEl.innerHTML = '<li class="text-slate-500">Run scan to see grade.</li>';
+                return;
+            }
+
+            // Update Main Score
+            securityScoreEl.textContent = scoreData.total;
+            riskLabelEl.textContent = `Grade ${scoreData.grade}`;
+            riskIndicatorEl.style.left = Math.min(98, Math.max(2, scoreData.total)) + "%";
+
+            // Update Breakdown List
+            const bd = scoreData.breakdown;
+            const items = [];
+
+            const formatCat = (label, obj) => `
+                <li class="mb-2">
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300">${label}</span>
+                        <span class="text-primary">${obj.score}/${obj.max}</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5">
+                        <div class="bg-primary h-1.5 rounded-full" style="width: ${(obj.score / obj.max) * 100}%"></div>
+                    </div>
+                    ${obj.items.length ? `<div class="text-[10px] text-slate-500 mt-0.5">${obj.items.join(", ")}</div>` : ''}
+                </li>`;
+
+            items.push(formatCat("Structure", bd.structure));
+            items.push(formatCat("Consistency", bd.activity));
+            items.push(formatCat("Project Depth", bd.depth));
+            items.push(formatCat("Professionalism", bd.professional));
+
+            if (bd.redFlags.flags.length > 0) {
+                items.push(`
+                <li class="mt-3 border-t border-slate-800 pt-2">
+                    <div class="flex justify-between text-xs text-danger font-semibold">
+                        <span>Red Flags</span>
+                        <span>${bd.redFlags.points} pts</span>
+                    </div>
+                    <ul class="list-disc list-inside text-[10px] text-red-400 mt-1">
+                        ${bd.redFlags.flags.map(f => `<li>${f}</li>`).join("")}
+                    </ul>
+                </li>`);
+            } else {
+                items.push(`<li class="mt-2 text-[10px] text-emerald-500">No red flags detected.</li>`);
+            }
+
+            riskHeatmapEl.innerHTML = items.join("");
+        }
+
+        // ======= HuggingFace AI =======
+        async function callHF(prompt) {
+            try {
+                const res = await fetch("/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    if (data.error === 'Model overloaded') return "Model overloaded";
+                    if (data.error === 'AI service unavailable') return "AI service unavailable";
+                    throw new Error(data.error || "Backend error");
+                }
+
+                const data = await res.json();
+                return Array.isArray(data) && data[0].generated_text ? data[0].generated_text : (data.generated_text || "No response");
+
+            } catch (e) {
+                if (e.message.includes("Failed to fetch")) return "AI service unavailable";
+                return "AI analysis failed: " + e.message;
+            }
+        }
+
+        async function runScan() {
+            const url = repoInput.value.trim();
+            const compareEnabled = currentMode === "compare";
+            let parsed2 = null;
+
+            if (currentMode === "profile") {
+                const username = parseGitHubProfile(url);
+                if (!username) return setStatus("Invalid GitHub profile.", "error");
+
+                toggleLoading(true);
+                setStatus("Analyzing GitHub profile...");
+
+                try {
+                    const res = await fetch("/analyze-profile", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username })
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error(data.error || "Backend error");
+                    }
+
+                    const data = await res.json();
+                    renderProfileAnalysis(data);
+                    setStatus("Profile analysis complete.", "success");
+                    lastReportText = `RepoScanAI Profile: ${username}\nLevel: ${data.metrics?.level || "–"} (${data.metrics?.level_score || "–"})\n\n${data.analysis || ""}`;
+                } catch (e) {
+                    console.error(e);
+                    setStatus("Profile analysis failed: " + e.message, "error");
+                } finally {
+                    toggleLoading(false);
+                }
+                return;
+            }
+
+            const parsed = parseGitHubUrl(url);
+            if (compareEnabled) {
+                parsed2 = parseGitHubUrl(repoInput2.value.trim());
+                if (!parsed2) return setStatus("Invalid second repository URL.", "error");
+            }
+
+            if (!parsed) return setStatus("Invalid GitHub URL.", "error");
+
+            toggleLoading(true);
+            setStatus("Starting professional audit...");
+
+            try {
+                // 1. Data Fetching
+                const meta = await fetchRepoMeta(parsed.owner, parsed.repo);
+                setStatus("Fetched metadata. Analyzing structure & history...");
+
+                repoNamePill.textContent = meta.full_name;
+                repoMetaEls.owner.textContent = meta.owner?.login;
+                repoMetaEls.stars.textContent = meta.stargazers_count;
+                repoMetaEls.updated.textContent = niceDate(meta.updated_at);
+                repoMetaEls.branch.textContent = meta.default_branch;
+                repoMetaEls.issues.textContent = meta.open_issues_count;
+                repoMetaEls.license.textContent = meta.license?.spdx_id || "None";
+
+                const [languages, contents, readme, commits] = await Promise.all([
+                    fetchLanguages(parsed.owner, parsed.repo),
+                    fetchContents(parsed.owner, parsed.repo),
+                    fetchReadme(parsed.owner, parsed.repo),
+                    fetchCommits(parsed.owner, parsed.repo)
+                ]);
+
+                // Render Languages
+                const langEntries = Object.entries(languages).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                languagesEl.innerHTML = langEntries.length ? langEntries.map(([l, b]) => `<div class="text-xs flex justify-between"><span>${l}</span><span>${percentage(b, Object.values(languages).reduce((a, c) => a + c, 0))}%</span></div>`).join("") : "No language data.";
+
+                // 2. File & Score Analysis
+                fileTreeEl.innerHTML = buildTreeFromContents(contents);
+                setStatus("Calculating professional grade...");
+
+                const scoreData = calculateRepoScore(meta, languages, contents, commits, readme);
+                renderScoreboard(scoreData);
+
+                // Vuln List is now just "Red Flags" or key issues?
+                // Let's keep a simplified "File Issues" list if we want, or just hide it.
+                // For now, let's clear the old 'vuln' list or use it for Red Flags summary duplication?
+                // Better: Use it for "Missing Critical Files" if any.
+                const criticalFiles = ["README.md", "README", ".gitignore", "LICENSE"];
+                const existingFiles = contents.map(c => c.name);
+                const missing = criticalFiles.filter(f => !existingFiles.includes(f) && !existingFiles.includes(f.toLowerCase()));
+                vulnListEl.innerHTML = missing.length ?
+                    `<div class="text-xs text-amber-400">Missing recommended files: ${missing.join(", ")}</div>` :
+                    `<div class="text-xs text-emerald-400">Core structure files present.</div>`;
+
+
+                // 3. AI Analysis
+                setStatus("Generating recruiter-style feedback...");
+
+                const prompt = `
+You are a Senior Technical Recruiter and Engineering Manager.
+Review this GitHub repository: "${meta.full_name}"
+Description: "${meta.description || 'No description'}"
+Languages: ${Object.keys(languages).join(", ")}
+Professional Grade: ${scoreData.grade} (${scoreData.total}/100)
+Breakdown:
+- Structure: ${scoreData.breakdown.structure.score}/${scoreData.breakdown.structure.max}
+- Consistency: ${scoreData.breakdown.activity.score}/${scoreData.breakdown.activity.max}
+- Depth: ${scoreData.breakdown.depth.score}/${scoreData.breakdown.depth.max}
+- Professionalism: ${scoreData.breakdown.professional.score}/${scoreData.breakdown.professional.max}
+Red Flags: ${scoreData.breakdown.redFlags.flags.join(", ") || "None"}
+
+Generate a professional, concise, and direct feedback report.
+**DO NOT use a letter format (Introduction/Subject/From). Start directly with the content.**
+
+Format the response exactly as follows:
+
+*   **Executive Summary**: [One sharp sentence on "Job Readiness"]
+*   **Strengths**:
+    *   [Bullet point 1]
+    *   [Bullet point 2]
+*   **Critical Improvements**:
+    *   [Bullet point 1]
+    *   [Bullet point 2]
+*   **Verdict**: [Hire / Interview / Pass]
+
+Keep it extremely crisp, clear, and to the point. return the response in markdown format.
+`.trim();
+
+                let aiRes;
+
+                if (!compareEnabled) {
+                    aiRes = await callHF(prompt);
+                    compareResult.classList.add("hidden");
+                } else {
+                    setStatus("Analyzing second repository...");
+
+                    const meta2 = await fetchRepoMeta(parsed2.owner, parsed2.repo);
+                    const [languages2, contents2, readme2, commits2] = await Promise.all([
+                        fetchLanguages(parsed2.owner, parsed2.repo),
+                        fetchContents(parsed2.owner, parsed2.repo),
+                        fetchReadme(parsed2.owner, parsed2.repo),
+                        fetchCommits(parsed2.owner, parsed2.repo)
+                    ]);
+
+                    const score2 = calculateRepoScore(meta2, languages2, contents2, commits2, readme2);
+
+                    const comparePrompt = `
+                Compare two GitHub repositories in ${compareMode.value} mode.
+
+                Repo A: ${meta.full_name} (${scoreData.grade})
+                Repo B: ${meta2.full_name} (${score2.grade})
+        
+                Decide which is better and explain why briefly.
+
+                Format:
+                Winner:
+                Reason:
+                `;
+
+                    aiRes = await callHF(comparePrompt);
+
+                    compareResult.classList.remove("hidden");
+                    compareOutput.innerHTML = marked.parse(aiRes);
+                }
+
+                // Parse out the "Verdict" if possible, otherwise just dump text.
+                // We'll put the whole text in summary and leave 'fixes' empty or reuse.
+                if (!compareEnabled) {
+                    const cleanText = aiRes.split("Review this GitHub repository")[0] || aiRes;
+                    aiSummaryEl.innerHTML = marked.parse(cleanText);
+                    aiFixesEl.textContent = "AI Analysis Complete.";
+                } else {
+                    aiSummaryEl.innerHTML = `
+                        <span class="text-slate-400">
+                        Comparison mode active — summary replaced by repository comparison.
+                        </span>
+                    `;
+                    aiFixesEl.textContent = "Comparison completed.";
+                }
+
+
+                setStatus("Audit complete.", "success");
+
+                lastReportText = `RepoScanAI Audit: ${meta.full_name}\nGrade: ${scoreData.grade} (${scoreData.total}/100)\n\n${aiSummaryEl.textContent}`;
+
+            } catch (e) {
+                console.error(e);
+                setStatus("Audit failed: " + e.message, "error");
+            } finally {
+                toggleLoading(false);
+            }
+        }
+        modeButtons.forEach(btn => btn.addEventListener("click", () => {
+            const mode = btn.getAttribute("data-mode");
+            setMode(mode);
+        }));
+
+        scanBtn.addEventListener("click", runScan);
+        demoButtons.forEach(btn => btn.addEventListener("click", () => {
+            if (currentMode === "profile") {
+                setMode("repo");
+            }
+            repoInput.value = btn.getAttribute("data-url");
+            runScan();
+        }));
+        copyReportBtn.addEventListener("click", () => navigator.clipboard.writeText(lastReportText));
+        exportPdfBtn.addEventListener("click", () => window.print());
+
+        setMode("repo");
+        console.log("RepoScanAI Professional loaded.");
+    </script>
+</body>
+
+</html>
