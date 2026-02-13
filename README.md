@@ -8,7 +8,7 @@ It answers practical questions:
 
 > Would a company trust this developer in production?
 
-Live Demo: https://repo-scan-ai.onrender.com/
+Deployed Project: https://repo-scan-ai.onrender.com/
 
 Video of Demo: https://drive.google.com/file/d/1wEd2QvaBF411AlFPCViR7e80xZlCrjUN/view?usp=sharing
 
