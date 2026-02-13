@@ -10,6 +10,8 @@ It answers practical questions:
 
 Live Demo: https://repo-scan-ai.onrender.com/
 
+Video of Demo: https://drive.google.com/file/d/1wEd2QvaBF411AlFPCViR7e80xZlCrjUN/view?usp=sharing
+
 ---
 
 ## What Makes This Different
