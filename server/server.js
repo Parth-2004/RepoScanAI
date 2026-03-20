@@ -1,4 +1,3 @@
-const { getUser, getRepos, getRepoLanguages } = require('./githubService');
 const { getProfileData } = require('./githubProfileService');
 const { calculateProfileScore } = require('./profileScore');
 const path = require('path');
