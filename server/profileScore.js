@@ -2,6 +2,7 @@ function calculateProfileScore(profileData) {
     const user = profileData.user || {};
     const repos = Array.isArray(profileData.repos) ? profileData.repos : [];
     const commitsByRepo = profileData.commitsByRepo || {};
+    const contentsByRepo = profileData.contentsByRepo || {};
 
     const createdAt = user.created_at ? new Date(user.created_at) : null;
     const yearsActive = createdAt ? Math.max(0, (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24 * 365)) : 0;
@@ -48,6 +49,49 @@ function calculateProfileScore(profileData) {
     const levelScore = Math.max(0, Math.min(100, Math.round(experienceScore + consistencyScore + depthScore + specializationScore + impactScorePoints)));
     const level = levelScore >= 76 ? 'Senior' : levelScore >= 61 ? 'Strong Mid' : levelScore >= 41 ? 'Mid' : levelScore >= 21 ? 'Junior' : 'Beginner';
 
+    // Calculate Code Health based on tests, CI/CD, and docs in top repos
+    let codeHealthScore = 0;
+    let codeHealthMax = 0;
+    Object.values(contentsByRepo).forEach(contents => {
+        if (!Array.isArray(contents) || contents.length === 0) return;
+        codeHealthMax += 3; // Max 3 points per repo: 1 for tests, 1 for CI/CD, 1 for docs
+        const fileNames = contents.map(c => c.name ? c.name.toLowerCase() : '').filter(Boolean);
+
+        const hasTests = fileNames.some(f => f.includes('test') || f.includes('spec') || f.includes('jest') || f.includes('mocha') || f.includes('pytest'));
+        const hasCICD = fileNames.some(f => f.includes('.github') || f.includes('.gitlab-ci.yml') || f.includes('travis.yml') || f.includes('circleci'));
+        const hasDocs = fileNames.some(f => f.includes('readme') || f.includes('docs') || f.includes('license') || f.includes('contributing'));
+
+        if (hasTests) codeHealthScore += 1;
+        if (hasCICD) codeHealthScore += 1;
+        if (hasDocs) codeHealthScore += 1;
+    });
+
+    let codeHealth = "Low";
+    if (codeHealthMax > 0) {
+        const healthRatio = codeHealthScore / codeHealthMax;
+        if (healthRatio >= 0.7) codeHealth = "Excellent";
+        else if (healthRatio >= 0.4) codeHealth = "Good";
+        else if (healthRatio >= 0.2) codeHealth = "Fair";
+    }
+
+    // Calculate Uniqueness based on original repos vs forks, and niche languages
+    const totalRepos = repos.length;
+    const originalRepos = repos.filter(repo => !repo.fork).length;
+    const originalityRatio = totalRepos > 0 ? originalRepos / totalRepos : 0;
+
+    // Check for diverse/niche languages
+    const uniqueLanguagesCount = Object.keys(languageCounts).length;
+    const commonLanguages = ['JavaScript', 'Python', 'Java', 'HTML', 'CSS', 'TypeScript', 'C++', 'C#', 'PHP'];
+    const nicheLanguagesCount = Object.keys(languageCounts).filter(lang => !commonLanguages.includes(lang)).length;
+
+    let uniquenessScore = (originalityRatio * 50) + (Math.min(uniqueLanguagesCount, 5) * 5) + (Math.min(nicheLanguagesCount, 3) * 8);
+    uniquenessScore = Math.max(0, Math.min(100, Math.round(uniquenessScore)));
+
+    let uniqueness = "Standard";
+    if (uniquenessScore >= 80) uniqueness = "Highly Unique";
+    else if (uniquenessScore >= 60) uniqueness = "Distinctive";
+    else if (uniquenessScore >= 40) uniqueness = "Above Average";
+
     return {
         level_score: levelScore,
         level,
@@ -55,7 +99,9 @@ function calculateProfileScore(profileData) {
         consistency,
         domains,
         serious_projects: seriousProjects,
-        impact_score: impactScore
+        impact_score: impactScore,
+        code_health: codeHealth,
+        uniqueness: uniqueness
     };
 }
 

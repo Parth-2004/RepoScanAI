@@ -68,9 +68,8 @@ app.post('/analyze-profile', async (req, res) => {
             return res.status(400).json({ error: 'Username is required' });
         }
 
-        if (!process.env.GEMINI_API_KEY) {
-            return res.status(500).json({ error: 'Gemini API Key missing' });
-        }
+        // Proceed even without Gemini Key so fallback can trigger
+        const hasGeminiKey = !!process.env.GEMINI_API_KEY;
 
         const profileData = await getProfileData(username);
         const scoreData = calculateProfileScore(profileData);
@@ -90,6 +89,8 @@ Serious Projects: ${scoreData.serious_projects}
 Dominant Stack: ${scoreData.specialization}
 Recent Activity: ${scoreData.consistency}
 Impact Score: ${scoreData.impact_score}
+Code Health: ${scoreData.code_health}
+Uniqueness: ${scoreData.uniqueness}
 Domains: ${scoreData.domains.length ? scoreData.domains.join(", ") : "None"}
 
 Return only this format with short, crisp bullet points (max 3 bullets per section):
@@ -107,25 +108,44 @@ Recommended Roles:
 Hiring Verdict: <one short phrase>
 `.trim();
 
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
+        let aiText = '';
+        try {
+            if (!hasGeminiKey) throw new Error('Gemini API Key missing');
+
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Gemini API Error: ${response.status}`);
             }
-        );
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Gemini REST API Error:', response.status, errorText);
-            return res.status(500).json({ error: 'AI service unavailable' });
+            const data = await response.json();
+            aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } catch (apiError) {
+            console.warn('AI API failed or missing key, falling back to rule-based metrics...', apiError.message);
+            // Rule-based fallback
+            aiText = `
+Candidate Level: ${scoreData.level}
+Strengths:
+- Shows ${scoreData.consistency} consistency in recent activity.
+- Code Health is rated as ${scoreData.code_health}.
+- Profile uniqueness is ${scoreData.uniqueness}.
+Weaknesses:
+- Metrics-based evaluation (AI unavailable)
+- Further manual review recommended
+Recommended Roles:
+- ${scoreData.specialization} Developer
+- ${scoreData.domains.length > 0 ? scoreData.domains[0] + ' Engineer' : 'Software Engineer'}
+Hiring Verdict: Metrics suggest ${scoreData.level} potential, manual interview required.
+`.trim();
         }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
         res.json({
             metrics: {
@@ -133,13 +153,34 @@ Hiring Verdict: <one short phrase>
                 repositories: profileData.repos.length,
                 ...scoreData
             },
-            analysis: text
+            analysis: aiText
         });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Profile analysis failed' });
     }
 });
+
+// Add a specific endpoint for fallback-based Repo Analysis if needed
+app.post('/analyze-repo-report', async (req, res) => {
+    // This provides a fallback endpoint if AI hits limit during repo scan
+    const { reportData } = req.body;
+    if (!reportData) return res.status(400).json({ error: 'Report data required' });
+
+    let fallbackText = `
+*   **Executive Summary**: The repository "${reportData.name}" achieved a Professional Grade of ${reportData.grade} (${reportData.total}/100).
+*   **Strengths**:
+    *   Structure Score: ${reportData.breakdown.structure.score}/${reportData.breakdown.structure.max}
+    *   Activity & Consistency: ${reportData.breakdown.activity.score}/${reportData.breakdown.activity.max}
+*   **Critical Improvements**:
+    *   Red Flags points: ${reportData.breakdown.redFlags.points}
+    *   Professionalism: ${reportData.breakdown.professional.score}/${reportData.breakdown.professional.max}
+*   **Verdict**: ${reportData.total >= 70 ? 'Hire / Interview' : 'Pass / Needs Review'}
+    `.trim();
+
+    res.json({ analysis: fallbackText });
+});
+
 
 app.listen(PORT, () => {
     console.log(`RepoScanAI running on port ${PORT}`);

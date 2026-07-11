@@ -1,0 +1,8 @@
+
+> reposcanai-server@1.0.0 start
+> node server.js
+
+(node:76772) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+RepoScanAI running on port 3005
+AI API failed or missing key, falling back to rule-based metrics... Gemini API Key missing

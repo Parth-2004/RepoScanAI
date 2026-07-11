@@ -34,6 +34,14 @@ async function getRepoCommits(owner, repo) {
     return await fetchJson(`${GITHUB_API}/repos/${owner}/${repo}/commits?per_page=30`);
 }
 
+async function getRepoContents(owner, repo) {
+    try {
+        return await fetchJson(`${GITHUB_API}/repos/${owner}/${repo}/contents?per_page=100`);
+    } catch {
+        return [];
+    }
+}
+
 async function getProfileData(username) {
     const user = await getUserProfile(username);
     const repos = await getUserRepos(username);
@@ -43,16 +51,19 @@ async function getProfileData(username) {
         topRepos.map(async (repo) => {
             try {
                 const commits = await getRepoCommits(username, repo.name);
-                return [repo.name, commits];
+                const contents = await getRepoContents(username, repo.name);
+                return [repo.name, { commits, contents }];
             } catch {
-                return [repo.name, []];
+                return [repo.name, { commits: [], contents: [] }];
             }
         })
     );
 
-    const commitsByRepo = Object.fromEntries(commitsEntries);
+    const dataByRepo = Object.fromEntries(commitsEntries);
+    const commitsByRepo = Object.fromEntries(Object.entries(dataByRepo).map(([k, v]) => [k, v.commits]));
+    const contentsByRepo = Object.fromEntries(Object.entries(dataByRepo).map(([k, v]) => [k, v.contents]));
 
-    return { user, repos, topRepos, commitsByRepo };
+    return { user, repos, topRepos, commitsByRepo, contentsByRepo };
 }
 
 module.exports = { getProfileData };
