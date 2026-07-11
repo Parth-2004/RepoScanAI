@@ -6,14 +6,28 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
+const connectDB = require('./config/db');
+require('./config/passport');
+const authRoutes = require('./routes/auth');
+const RepoCache = require('./models/RepoCache');
+const ProfileCache = require('./models/ProfileCache');
+const passport = require('passport');
+const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Connect to MongoDB
+connectDB();
+
 app.use(cors());
 app.use(express.json());
+app.use(passport.initialize());
 
-// Serve static frontend
+// Auth Routes
+app.use('/auth', authRoutes);
+
+// Serve static frontend (Legacy)
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -31,7 +45,19 @@ app.post('/analyze', async (req, res) => {
         return res.status(500).json({ error: 'Gemini API Key missing' });
     }
 
+    // Simple hash/extraction for repo URL from prompt (in real app, pass repoUrl in body)
+    const repoUrlMatch = prompt.match(/github\.com\/([^/]+\/[^/\s]+)/);
+    const repoUrl = repoUrlMatch ? repoUrlMatch[1] : null;
+
     try {
+        if (repoUrl && mongoose.connection.readyState === 1) {
+            const cached = await RepoCache.findOne({ repoUrl });
+            if (cached) {
+                console.log('Serving from cache for:', repoUrl);
+                return res.json([{ generated_text: cached.aiAnalysis }]);
+            }
+        }
+
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
             {
@@ -52,6 +78,10 @@ app.post('/analyze', async (req, res) => {
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
+        if (repoUrl && text && mongoose.connection.readyState === 1) {
+            await RepoCache.create({ repoUrl, aiAnalysis: text });
+        }
+
         res.json([{ generated_text: text }]);
 
     } catch (error) {
@@ -70,6 +100,17 @@ app.post('/analyze-profile', async (req, res) => {
 
         if (!process.env.GEMINI_API_KEY) {
             return res.status(500).json({ error: 'Gemini API Key missing' });
+        }
+
+        if (mongoose.connection.readyState === 1) {
+            const cached = await ProfileCache.findOne({ githubUsername: username });
+            if (cached) {
+                console.log('Serving from cache for:', username);
+                return res.json({
+                    metrics: cached.metrics,
+                    analysis: cached.aiAnalysis
+                });
+            }
         }
 
         const profileData = await getProfileData(username);
@@ -127,12 +168,22 @@ Hiring Verdict: <one short phrase>
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
+        const metrics = {
+            years_active: yearsActiveRounded,
+            repositories: profileData.repos.length,
+            ...scoreData
+        };
+
+        if (text && mongoose.connection.readyState === 1) {
+            await ProfileCache.create({
+                githubUsername: username,
+                metrics: metrics,
+                aiAnalysis: text
+            });
+        }
+
         res.json({
-            metrics: {
-                years_active: yearsActiveRounded,
-                repositories: profileData.repos.length,
-                ...scoreData
-            },
+            metrics,
             analysis: text
         });
     } catch (err) {
