@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recruiter Dashboard - RepoScanAI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for in-browser JSX parsing -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        },
+                        dark: {
+                            800: '#1e293b',
+                            900: '#0f172a',
+                            950: '#020617',
+                        }
+                    },
+                    boxShadow: {
+                        'glow': '0 0 20px rgba(14, 165, 233, 0.5)',
+                        '3d': '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3)',
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        body {
+            background-color: #020617; /* dark-950 */
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* 3D Glassmorphism Card Style */
+        .glass-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            border-radius: 16px;
+        }
+
+        .glass-input {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .glass-input:focus {
+            outline: none;
+            border-color: #0ea5e9;
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.3);
+        }
+
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #0ea5e9;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Fancy Metric Ring */
+        .metric-ring {
+            stroke-dasharray: 283;
+            stroke-dashoffset: 283;
+            transition: stroke-dashoffset 1s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { motion, AnimatePresence } = window.Motion;
+
+        // Custom Lucide Icon Component wrapper for React (since we use vanilla Lucide script)
+        const Icon = ({ name, size=24, color="currentColor", className="" }) => {
+            const iconRef = useRef(null);
+            useEffect(() => {
+                if (iconRef.current && window.lucide) {
+                    iconRef.current.innerHTML = ''; // clear previous
+                    const svg = window.lucide.createIcons({
+                        icons: { [name]: window.lucide.icons[name] },
+                        nameAttr: 'data-lucide',
+                        attrs: { width: size, height: size, stroke: color, class: className }
+                    });
+                    const iconEl = document.createElement('i');
+                    iconEl.setAttribute('data-lucide', name);
+                    iconRef.current.appendChild(iconEl);
+                    window.lucide.createIcons({ root: iconRef.current });
+                }
+            }, [name, size, color, className]);
+            return <span ref={iconRef} className="inline-flex items-center justify-center" />;
+        };
+
+        const MetricCard = ({ title, value, icon, gradient }) => (
+            <motion.div
+                whileHover={{ y: -5, scale: 1.02 }}
+                className="glass-card p-5 relative overflow-hidden group"
+            >
+                <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-20 blur-xl ${gradient}`}></div>
+                <div className="flex items-center gap-4 relative z-10">
+                    <div className={`p-3 rounded-xl bg-dark-800/50 border border-white/5`}>
+                        <Icon name={icon} size={28} className="text-brand-500" />
+                    </div>
+                    <div>
+                        <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{title}</p>
+                        <h3 className="text-2xl font-bold text-white mt-1">{value}</h3>
+                    </div>
+                </div>
+            </motion.div>
+        );
+
+        const ScoreRing = ({ score, label }) => {
+            const circleRef = useRef(null);
+            useEffect(() => {
+                if (circleRef.current) {
+                    // Circumference for r=45 is ~283
+                    const offset = 283 - (283 * score) / 100;
+                    setTimeout(() => {
+                        circleRef.current.style.strokeDashoffset = offset;
+                    }, 100);
+                }
+            }, [score]);
+
+            let colorClass = "text-red-500";
+            if (score >= 70) colorClass = "text-brand-500";
+            else if (score >= 40) colorClass = "text-yellow-500";
+
+            return (
+                <div className="relative w-32 h-32 flex items-center justify-center">
+                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+                        <circle
+                            ref={circleRef}
+                            cx="50" cy="50" r="45" fill="none"
+                            stroke="currentColor"
+                            strokeWidth="8"
+                            strokeLinecap="round"
+                            className={`metric-ring ${colorClass}`}
+                        />
+                    </svg>
+                    <div className="absolute text-center">
+                        <span className="text-3xl font-bold text-white">{score}</span>
+                        <span className="block text-[10px] text-slate-400 uppercase tracking-widest">{label}</span>
+                    </div>
+                </div>
+            );
+        };
+
+        const ProfileView = () => {
+            const [username, setUsername] = useState("");
+            const [loading, setLoading] = useState(false);
+            const [data, setData] = useState(null);
+            const [error, setError] = useState(null);
+
+            const handleAnalyze = async (e) => {
+                e.preventDefault();
+                if (!username) return;
+                setLoading(true);
+                setError(null);
+                try {
+                    const res = await fetch("/analyze-profile", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username })
+                    });
+                    if (!res.ok) throw new Error("Failed to analyze profile.");
+                    const json = await res.json();
+                    setData(json);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 max-w-5xl mx-auto">
+
+                    <div className="text-center space-y-4 pt-10 pb-6">
+                        <motion.div initial={{ y: -20 }} animate={{ y: 0 }} className="inline-flex items-center justify-center p-4 rounded-full bg-brand-500/20 mb-4 shadow-glow">
+                            <Icon name="Search" size={40} className="text-brand-500" />
+                        </motion.div>
+                        <h1 className="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">
+                            Deep Candidate Scan
+                        </h1>
+                        <p className="text-slate-400 max-w-xl mx-auto">Fully analyze a GitHub profile for code health, consistency, and uniqueness using AI and advanced metric calculations.</p>
+                    </div>
+
+                    <form onSubmit={handleAnalyze} className="max-w-2xl mx-auto relative group">
+                        <div className="absolute inset-0 bg-brand-500/20 rounded-full blur-xl group-hover:bg-brand-500/30 transition-all duration-500"></div>
+                        <div className="relative flex items-center bg-dark-900 border border-slate-700 rounded-full p-2 pr-2 shadow-2xl">
+                            <div className="pl-4 text-slate-400">
+                                <Icon name="Github" size={20} />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Enter GitHub Username..."
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                className="w-full bg-transparent border-none text-white px-4 py-3 focus:outline-none placeholder-slate-500"
+                            />
+                            <button
+                                type="submit"
+                                disabled={loading || !username}
+                                className="bg-brand-600 hover:bg-brand-500 text-white px-6 py-3 rounded-full font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {loading ? <div className="loader" /> : 'Scan Candidate'}
+                            </button>
+                        </div>
+                    </form>
+
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl text-center">
+                            {error}
+                        </div>
+                    )}
+
+                    <AnimatePresence>
+                        {data && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 40 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="space-y-6 pt-8"
+                            >
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <MetricCard title="Overall Level" value={data.metrics.level} icon="Award" gradient="bg-amber-500" />
+                                    <MetricCard title="Code Health" value={data.metrics.code_health} icon="HeartPulse" gradient="bg-brand-500" />
+                                    <MetricCard title="Consistency" value={data.metrics.consistency} icon="Activity" gradient="bg-green-500" />
+                                    <MetricCard title="Uniqueness" value={data.metrics.uniqueness} icon="Fingerprint" gradient="bg-purple-500" />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="glass-card p-8 md:col-span-1 flex flex-col items-center justify-center text-center">
+                                        <h3 className="text-lg font-semibold text-slate-300 mb-6">Candidate Scorecard</h3>
+                                        <ScoreRing score={data.metrics.level_score} label="Maturity" />
+
+                                        <div className="mt-8 space-y-3 w-full text-left">
+                                            <div className="flex justify-between items-center pb-2 border-b border-white/5 text-sm">
+                                                <span className="text-slate-400">Repositories</span>
+                                                <span className="font-semibold">{data.metrics.repositories}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center pb-2 border-b border-white/5 text-sm">
+                                                <span className="text-slate-400">Serious Projects</span>
+                                                <span className="font-semibold">{data.metrics.serious_projects}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center pb-2 border-b border-white/5 text-sm">
+                                                <span className="text-slate-400">Dominant Stack</span>
+                                                <span className="font-semibold text-brand-400">{data.metrics.specialization}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-slate-400">Years Active</span>
+                                                <span className="font-semibold">{data.metrics.years_active}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="glass-card p-6 md:col-span-2 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                                            <Icon name="Bot" size={120} />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                                            <Icon name="Sparkles" className="text-brand-500" size={20} />
+                                            Recruiter AI / Metric Report
+                                        </h3>
+                                        <div className="prose prose-invert max-w-none text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                                            {data.analysis}
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </motion.div>
+            );
+        };
+
+        const App = () => {
+            return (
+                <div className="min-h-screen bg-[#020617] text-white overflow-hidden relative">
+                    {/* Background effects */}
+                    <div className="fixed inset-0 z-0">
+                        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-brand-900/20 blur-[120px]" />
+                        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-purple-900/20 blur-[120px]" />
+                    </div>
+
+                    {/* Navbar */}
+                    <nav className="relative z-10 border-b border-white/5 bg-dark-950/50 backdrop-blur-md">
+                        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center font-bold shadow-glow">R</div>
+                                <span className="font-semibold text-lg tracking-tight">RepoScanAI <span className="text-slate-500 font-normal">| Recruiter</span></span>
+                            </div>
+                            <div className="flex gap-4">
+                                <a href="/" className="text-sm text-slate-400 hover:text-white transition-colors">Back to Main App</a>
+                            </div>
+                        </div>
+                    </nav>
+
+                    {/* Main Content */}
+                    <main className="relative z-10 p-6 md:p-12">
+                        <ProfileView />
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
